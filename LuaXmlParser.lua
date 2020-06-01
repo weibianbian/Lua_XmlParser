@@ -1,7 +1,5 @@
 function XmlParser()
-    local xmlParser={}
-    
-    Tag={
+    local Tag={
         ['=']=1,
         ['/']=2,
         ['<']=3,
@@ -13,7 +11,7 @@ function XmlParser()
         ['?']=9,
     }
 
-    TokenType={
+    local TokenType={
         xml_tt_U=1, --初始化时候设置为未知
         xml_tt_H=2, --头<?xxxxx?>
         xml_tt_B=3, --标签头<xxxxx>
@@ -22,108 +20,104 @@ function XmlParser()
         xml_tt_T=6,--标签头，标签尾所夹的内容，不允许出现<>
         xml_tt_InnerText=7,--
     }
+    local xmlParser={}
     function xmlParser:ReadCh()
         self.index=self.index+1
         local ch=string.sub(self.context,self.index,self.index)
         return ch
     end
-        local elements={}
     function xmlParser:GetToken()
-        local peek=''
         local state=0
         local token={}
-        local element={}
+        local peekToken=nil
         while true do
-            peek=self:Scan()
-            if peek==nil then return -1 end
-            -- print(TagX[peek.tag],peek.lexeme,"state",state)
+            peekToken=self:Scan()
+            if peekToken==nil then 
+                return -1 
+            end
             if state==0 then
-                if peek.tag==Tag['<'] then
+                if peekToken.tag==Tag['<'] then
                     state=1
-                elseif peek.tag==Tag['ID'] then
-                    token.lexeme=peek.lexeme
+                elseif peekToken.tag==Tag['ID'] then
+                    token.lexeme=peekToken.lexeme
                     token.tokenType=TokenType.xml_tt_InnerText
                     return token
                 else
                     return -1
                 end
             elseif state==1 then
-                if peek.tag==Tag['?'] then
+                if peekToken.tag==Tag['?'] then
                     state=2
-                elseif peek.tag==Tag['/'] then
+                elseif peekToken.tag==Tag['/'] then
                     state=4
-                elseif peek.tag==Tag['ID'] then
-                    token.tag=peek.lexeme
-                    element.tag=token.tag
+                elseif peekToken.tag==Tag['ID'] then
+                    token.tag=peekToken.lexeme
+                    token.element=Element(token.tag)
                     state=5
                 else
                     return -1
                 end
             elseif state==2 then
-                if peek.tag==Tag['?'] then
+                if peekToken.tag==Tag['?'] then
                     state=3
                 end
             elseif state==3 then
-                if peek.tag==Tag['>'] then
+                if peekToken.tag==Tag['>'] then
                     token.tokenType=TokenType.xml_tt_H
                     return token
                 else
                     return -1
                 end
             elseif state==4 then
-                if peek.tag==Tag['ID'] then
+                if peekToken.tag==Tag['ID'] then
                     state=7
-                    token.tag=peek.lexeme
+                    token.tag=peekToken.lexeme
                 else
                     return -1
                 end
             elseif state==7 then
-                if peek.tag==Tag['>'] then
+                if peekToken.tag==Tag['>'] then
                     token.tokenType=TokenType.xml_tt_E
                     return token
                 else
                     return -1
                 end
             elseif state==5 then
-                if peek.tag==Tag['>'] then
+                if peekToken.tag==Tag['>'] then
                     token.tokenType=TokenType.xml_tt_B
-                    token.element=element
                     return token
-                elseif peek.tag==Tag['/'] then
+                elseif peekToken.tag==Tag['/'] then
                     state=6
-                elseif peek.tag==Tag['ID'] then
-                    element.attributes=element.attributes or {}
+                elseif peekToken.tag==Tag['ID'] then
                    while true do
                         local att={}
-                        if peek.tag==Tag['ID'] then
-                            att.attName=peek.lexeme
-                            peek=self:Scan()
+                        if peekToken.tag==Tag['ID'] then
+                            att.attName=peekToken.lexeme
+                            peekToken=self:Scan()
                         else
                             break
                         end
-                        if peek.tag==Tag['='] then
-                            peek=self:Scan()
+                        if peekToken.tag==Tag['='] then
+                            peekToken=self:Scan()
                         else
                             return -1
                         end
-                        if peek.tag==Tag['LITERAL'] then
-                            att.attValue=peek.lexeme
-                            -- peek=Lexer.Scan()
+                        if peekToken.tag==Tag['LITERAL'] then
+                            att.attValue=peekToken.lexeme
+                            -- peekToken=self:Scan()
                         else
                             return -1
                         end
-                        element.attributes[att.attName]=element.attributes[att.attName] or {}
-                        table.insert(element.attributes[att.attName],att.attValue)
-                        -- print(element.attributes[att.attName][1])
+                        token.element:AddAttribute(att.attName,att.attValue)
                     end
                 else
                     print("error")
                     return -1
                 end
             elseif state==6 then
-                if peek.tag==Tag['>'] then
+                if peekToken.tag==Tag['>'] then
                     token.tokenType=TokenType.xml_tt_BE
-                    token.element=element
+                    -- token.element=Element(token.tag)
                     return token
                 else
                     return -1
@@ -131,53 +125,48 @@ function XmlParser()
             end
         end
     end
-    function xmlParser:RollBack()
-        index=index-1
-    end
-    local peek=' '
-    local line=1
     function xmlParser:Scan()
         while true do
-            if peek==' ' or peek=='\t' then
-                peek=self:ReadCh()
-            elseif peek=='\n' then
-                line=line+1
-                -- print(line,'line')
-                peek=self:ReadCh()
+            if self.peek==' ' or self.peek=='\t' then
+                self.peek=self:ReadCh()
+            elseif self.peek=='\n' then
+                self.line=self.line+1
+                print(self.line,'line')
+                self.peek=self:ReadCh()
             else
                 break
             end
         end
         --是否是数字或者字母 后者下划线
-        local re=string.match(peek,'[a-zA-Z_]')
+        local re=string.match(self.peek,'[a-zA-Z_]')
         if re~=nil then
             local letter=''
             while re~=nil do
                 letter=letter..re
-                peek=self:ReadCh()
-                re=string.match(peek,'[a-zA-Z_]')
+                self.peek=self:ReadCh()
+                re=string.match(self.peek,'[a-zA-Z_]')
             end
             -- print(letter)
             return {tag=Tag['ID'],lexeme=letter}
         end
-        re=string.match(peek,'[<>=/]')
+        re=string.match(self.peek,'[<>=/]')
         if re~=nil then
             if re=='<' then
-                peek=self:ReadCh()
-                if peek=='!' then --注释开始
-                    peek=self:ReadCh()
-                    peek=self:ReadCh()
-                    if peek=='-' then
+                self.peek=self:ReadCh()
+                if self.peek=='!' then --注释开始
+                    self.peek=self:ReadCh()
+                    self.peek=self:ReadCh()
+                    if self.peek=='-' then
                         local str=''
                         while true do
-                            peek=self:ReadCh()
-                            if peek=='-' then
-                                peek=self:ReadCh()
-                                if peek=='-' then
-                                    peek=self:ReadCh()
-                                    if peek=='>' then
+                            self.peek=self:ReadCh()
+                            if self.peek=='-' then
+                                self.peek=self:ReadCh()
+                                if self.peek=='-' then
+                                    self.peek=self:ReadCh()
+                                    if self.peek=='>' then
                                         --是注释
-                                        peek=self:ReadCh()
+                                        self.peek=self:ReadCh()
                                         break
                                     end
                                 end
@@ -190,30 +179,28 @@ function XmlParser()
                     -- print(re)
                     return {tag=Tag['<'],lexeme=re}
                 end
-                -- peek=Lexer.ReadCh()
+                -- self.peek=Lexer.ReadCh()
             elseif re=='>' then
-                -- print(peek)
-                peek=self:ReadCh()
+                self.peek=self:ReadCh()
                 return {tag=Tag['>'],lexeme=re}
             elseif re=='=' then
-                -- print(peek)
-                peek=self:ReadCh()
+                self.peek=self:ReadCh()
                 return {tag=Tag['='],lexeme=re}
             elseif re=='/' then
-                peek=self:ReadCh()
+                self.peek=self:ReadCh()
                 return {tag=Tag['/'],lexeme=re}
             end
             return {tag=""}
         end
-        re=string.match(peek,'["]')
+        re=string.match(self.peek,'["]')
         if re~=nil then
             local str=""
             while true do
-                peek=self:ReadCh()
-                if peek~='"' then
-                    str=str..peek
+                self.peek=self:ReadCh()
+                if self.peek~='"' then
+                    str=str..self.peek
                 else    
-                    peek=self:ReadCh()
+                    self.peek=self:ReadCh()
                     break
                 end
             end
@@ -223,28 +210,40 @@ function XmlParser()
     function xmlParser:ParserText(xmlText)
         local stack={}
         local token=-1
-        local elements={}
+        local root=nil
+        self.peek=' '
         self.context=xmlText
         self.index=0
+        self.line=1
         while true do
             token=self:GetToken()
             if token==-1 then break end
             if token.tokenType==TokenType.xml_tt_B then
-                elements[token.tag]=token.element
-                stack[#stack+1]=token
-                print("压入一个：：",token.tag)
+                if #stack==0 then
+                    root=token.element
+                else
+                    local element=stack[#stack]
+                    element:AddChild(token.element)
+                end
+                print("压入一个")
+                stack[#stack+1]=token.element
             elseif token.tokenType==TokenType.xml_tt_BE then
-                elements[token.tag]=token.element
+                if #stack==0 then
+                    pritn("error   token.tokenType==TokenType.xml_tt_BE")
+                else
+                    local element=stack[#stack]
+                    element:AddChild(token.element)
+                end
             elseif token.tokenType==TokenType.xml_tt_InnerText then
                 if #stack<=0 then 
-                    print("格式不对") 
+                    print("格式不对 token.tokenType==TokenType.xml_tt_InnerText") 
                 else
-                    local element=elements[stack[#stack].tag]
+                    local element=stack[#stack]
                     element.InnerText=token.lexeme
                 end
             elseif token.tokenType==TokenType.xml_tt_E then
                 if #stack>0 then
-                    if token.tag==stack[#stack].tag then
+                    if token.tag==stack[#stack]:Name() then
                         stack[#stack]=nil
                         print("弹出一个：：",token.tag)
                     end
@@ -258,14 +257,9 @@ function XmlParser()
             print("格式不对") 
             return  
         end
-       pt(elements)
+       return root
     end
     function xmlParser:LoadFile(xmlFilename, base)
-        -- if not base then
-        --     base = system.ResourceDirectory
-        -- end
-
-        -- local path = system.pathForFile(xmlFilename, base)
         local path = xmlFilename
         local hFile, err = io.open(path, "r");
 
@@ -282,116 +276,34 @@ function XmlParser()
 end
 
 
-
-
-
-
-
-
--- Lexer.OpenFile("zqf92.xml")
-
-
-
-
-
-
-function _printt(lua_table,limit,indent__,step__)
-    step__ = step__ or 0
-    indent__ = indent__ or 0
-    local content__ = ""
-    if limit~=nil then
-        if step__ > limit then 
-            return "..."
-        end
-    end
-    if step__ > 8 then
-        return content__.."..."
-    end
-    if lua_table ==nil then 
-        return "nil"
-    end
-    if type(lua_table) == "userdata" or type(lua_table) == "lightuserdata" or type(lua_table) == "thread" then
-        return tostring(lua_table)
-    end
-
-    if type(lua_table) == "string" or type(lua_table) == "number" then
-        return "[No-Table]:"..lua_table
-    end
-
-    for k,v in pairs(lua_table) do
-        if k~="_class_type" then
-            local szSuffix = ""
-            TypeV = type(v)
-            if  TypeV == "table" then
-                szSuffix = "{"
-            end
-            local szPrefix = string.rep("  ",indent__)
-            if TypeV == "table"and v._fields then
-                local kk,vv = next(v._fields) 
-                if type(vv) == "table" then
-                    content__ = content__.."\n\t"..kk.name.."={".._printt(vv._fields,5,indent__+1,step__+1).."}"
-                else
-                    content__=content__.."\n\t"..kk.name.."="..vv
-                end
-            else
-                if type(k) == "table" then
-                    if k.name then
-                        if type(v)~="table"then
-                            content__=content__.."\n"..k.name.." = "..v
-                        else
-                            content__ = content__.."\n"..k.name.." = list:"
-                            local tmp="\n"
-                            for ka,va in ipairs(v) do
-                                tmp=tmp.."#"..ka.."-"..tostring(va)
-                            end
-                            content__=content__..tmp
-                        end
-                    end
-                elseif type(k) == "function" then
-                    content__=content__.."\n fun=function"
-                else
-                    formatting=szPrefix..tostring(k).." = "..szSuffix
-                    if TypeV=="table" then
-                        content__=content__.."\n"..formatting
-                        content__=content__.._printt(v,limit,indent__+1,step__+1)
-                        content__=content__.."\n"..szPrefix.."},"
-                    else
-                        local szValue = ""
-                        if TypeV=="string"then
-                            szValue = string.format("%q",v)
-                        else
-                            szValue = tostring(v)
-                        end
-                        content__=content__.."\n"..formatting..(szValue or "nil")..","
-                    end
-                end
-            end
-        end
-    end
-    return content__
-end
-
-function  pt( ... )
-    local arg = {...}
-    local has = false
-    for _,v in pairs(arg) do
-        if v and type(v) ==  "table" then
-            has = true
-            break
-        end
-    end
-    if not has then 
-        print(...)
-    end
-    local content__ = ""
-    for _,v in pairs(arg) do
-        if v == "table" then
-            content__ = content__..tostring(v).."\n"
+function Element(name)
+    local element={}
+    element.___innerText = nil
+    element.___name = name
+    element.___childrens = {}
+    element.___attributes = {}
+    function element:InnerText() return self.___innerText end
+    function element:Name() return self.___name end
+    function element:Childrens() return self.___childrens end
+    function element:NumChildrens() return #self.___children end
+    function element:AddChild(child)
+        if self[child:Name()] ~= nil then
+            table.insert(self[child:Name()], child)
         else
-            content__=content__.."=>>[T]:".._printt(v,limit),debug.traceback().."\n"
+            self[child:Name()] = child
         end
-        print(content__)
+        table.insert(self.___childrens, child)
     end
+    function element:Attributes() return self.___attributes end
+    function element:NumAttributes() return #self.___attributes end
+    function element:AddAttribute(name, value)
+        local lName = name
+        if self[name] ~= nil then
+            table.insert(self[name], value)
+        else
+            self[name] = value
+        end
+        table.insert(self.___attributes, { name = name, value = self[name] })
+    end
+    return element
 end
-local xml=XmlParser()
-xml:LoadFile("zqf92.xml")
